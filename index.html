@@ -1,1 +1,397 @@
 
+<!DOCTYPE html>
+<html lang="az">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SUXARİK RUN</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#101820;color:white;font-family:Arial;overflow:hidden}
+canvas{display:block;width:100vw;height:100dvh}
+#hud{position:fixed;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;pointer-events:none}
+.panel{background:#111c;color:white;padding:10px 15px;border-radius:14px;border:1px solid #ffffff44;font-weight:bold}
+#buttons{position:fixed;bottom:20px;left:0;right:0;display:flex;justify-content:space-around;align-items:end}
+button{border:0;border-radius:14px;padding:14px 19px;background:#ffb52e;color:#222;font-weight:bold;font-size:16px;cursor:pointer;touch-action:none}
+#menu{position:fixed;inset:0;background:#07121ddd;display:flex;align-items:center;justify-content:center;text-align:center}
+.card{background:#172637;padding:28px;border-radius:22px;width:min(90%,390px);border:1px solid #ffffff33}
+.card h1{color:#ffc044;font-size:38px;margin:5px}
+.card p{line-height:1.5;color:#ddd}
+#shop{display:none;position:fixed;inset:0;background:#07121dee;overflow:auto;padding:25px;text-align:center}
+.item{background:#24384c;padding:14px;margin:10px;border-radius:13px}
+#shop button{margin:5px}
+.small{font-size:12px;color:#ddd}
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="hud">
+ <div class="panel">🥨 SUXARİK: <span id="money">0</span></div>
+ <div class="panel">🏃 MƏSAFƏ: <span id="distance">0</span> m</div>
+ <button onclick="openShop()" style="pointer-events:auto">🛒 SHOP</button>
+</div>
+
+<div id="buttons">
+ <button onclick="move(-1)">⬅</button>
+ <button onclick="jump()">⬆ TULLAN</button>
+ <button onclick="slide()">⬇ SÜRÜŞ</button>
+ <button onclick="move(1)">➡</button>
+</div>
+
+<div id="menu">
+ <div class="card">
+  <h1>🥨 SUXARİK RUN</h1>
+  <p>Məhəllədə qaç! Suxarikləri topla! Pişikdən qaç!</p>
+  <p>⬅ ➡ Hərəkət | SPACE Tullan | S Sürüş</p>
+  <button onclick="startGame()">OYUNA BAŞLA</button>
+  <p class="small">Məhəllənin ən sürətli qaçışçısı ol!</p>
+ </div>
+</div>
+
+<div id="shop">
+ <h1>🛒 SUXARİK SHOP</h1>
+ <h3>Balans: <span id="shopMoney">0</span> 🥨</h3>
+ <div id="items"></div>
+ <button onclick="closeShop()">GERİ QAYIT</button>
+</div>
+
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+
+let W,H;
+function resize(){
+ W=canvas.width=innerWidth*devicePixelRatio;
+ H=canvas.height=innerHeight*devicePixelRatio;
+}
+resize();
+addEventListener("resize",resize);
+
+let money=0,distance=0,playing=false;
+let lane=0,playerY=0,velocity=0,sliding=0;
+let objects=[],spawnTimer=0,speed=0.45;
+let catDistance=0;
+let owned=["Adi geyim"];
+let equipped="Adi geyim";
+let inventory=[
+ {name:"Qara hoodie",price:100,emoji:"🧥"},
+ {name:"İdman şalvarı",price:150,emoji:"👖"},
+ {name:"İdman ayaqqabısı",price:200,emoji:"👟"},
+ {name:"Skateboard",price:500,emoji:"🛹"},
+ {name:"Adi scooter",price:800,emoji:"🛴"},
+ {name:"Elektrikli scooter",price:1500,emoji:"🛵"}
+];
+
+let best=Number(localStorage.getItem("srBest")||0);
+
+function startGame(){
+ document.getElementById("menu").style.display="none";
+ playing=true;
+ objects=[];
+ distance=0;
+ catDistance=0;
+ lane=0;
+ speed=0.45;
+ lastTime=performance.now();
+ requestAnimationFrame(loop);
+}
+
+function move(n){
+ if(!playing)return;
+ lane=Math.max(-1,Math.min(1,lane+n));
+}
+function jump(){
+ if(playing&&playerY===0&&sliding<=0)velocity=0.19;
+}
+function slide(){
+ if(playing)sliding=0.65;
+}
+
+addEventListener("keydown",e=>{
+ if(e.key==="ArrowLeft"||e.key.toLowerCase()==="a")move(-1);
+ if(e.key==="ArrowRight"||e.key.toLowerCase()==="d")move(1);
+ if(e.key===" "||e.key==="ArrowUp"||e.key.toLowerCase()==="w")jump();
+ if(e.key==="ArrowDown"||e.key.toLowerCase()==="s")slide();
+});
+
+let touchX=0,touchY=0;
+canvas.addEventListener("touchstart",e=>{
+ touchX=e.touches[0].clientX;
+ touchY=e.touches[0].clientY;
+},{passive:true});
+canvas.addEventListener("touchend",e=>{
+ let dx=e.changedTouches[0].clientX-touchX;
+ let dy=e.changedTouches[0].clientY-touchY;
+ if(Math.abs(dx)>35)move(dx>0?1:-1);
+ else if(Math.abs(dy)>35){if(dy<0)jump();else slide();}
+},{passive:true});
+
+function spawn(){
+ let r=Math.random();
+ let type=r<0.60?"snack":r<0.85?"car":"barrier";
+ objects.push({
+  lane:Math.floor(Math.random()*3)-1,
+  z:0,
+  type:type
+ });
+}
+
+function polygon(points,color){
+ ctx.fillStyle=color;
+ ctx.beginPath();
+ points.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));
+ ctx.closePath();
+ ctx.fill();
+}
+
+function road(){
+ let horizon=H*.34;
+ polygon([[W*.34,horizon],[W*.66,horizon],[W*1.15,H],[W*-.15,H]],"#45494d");
+ polygon([[0,horizon],[W*.34,horizon],[W*-.15,H],[0,H]],"#3c6a43");
+ polygon([[W*.66,horizon],[W,horizon],[W,H],[W*1.15,H]],"#3c6a43");
+
+ // Road markings
+ ctx.strokeStyle="#eee";
+ ctx.lineWidth=3*devicePixelRatio;
+ for(let i=0;i<14;i++){
+  let z=(i/14+distance*.006)%1;
+  let y=horizon+z*z*(H-horizon);
+  let width=z*W*.007;
+  for(let x of [.445,.555]){
+   ctx.beginPath();
+   ctx.moveTo(W*x-width,y);
+   ctx.lineTo(W*x+width,y+z*22*devicePixelRatio);
+   ctx.stroke();
+  }
+ }
+ // Sidewalks
+ polygon([[W*.30,horizon],[W*.34,horizon],[W*-.15,H],[W*-.22,H]],"#99958b");
+ polygon([[W*.66,horizon],[W*.70,horizon],[W*1.22,H],[W*1.15,H]],"#99958b");
+
+ // Buildings on both sides
+ for(let i=0;i<9;i++){
+  let z=(i/9+distance*.0015)%1;
+  let y=horizon+z*z*(H-horizon);
+  let bh=(.05+z*.30)*H;
+  let bw=(.035+z*.12)*W;
+  let x1=W*(.27-z*.30);
+  let x2=W*(.73+z*.30);
+  building(x1,y-bh,bw,bh,z);
+  building(x2,y-bh,bw,bh,z);
+ }
+}
+
+function building(x,y,w,h,z){
+ ctx.fillStyle=["#d6a77b","#b8c5ca","#d2c5a7","#b2a4a0"][Math.floor((x/w*10)%4)];
+ ctx.fillRect(x,y,w,h);
+ ctx.fillStyle="#766c68";
+ ctx.fillRect(x,y+h*.85,w,h*.15);
+ for(let a=0;a<3;a++){
+  for(let b=0;b<3;b++){
+   ctx.fillStyle="#a9d9e9";
+   ctx.fillRect(x+w*(.13+b*.29),y+h*(.12+a*.22),w*.14,h*.12);
+  }
+ }
+}
+
+function drawObject(o){
+ let z=o.z;
+ let y=H*.34+z*z*(H*.66);
+ let x=W*(.5+o.lane*.11*z);
+ let size=(.012+z*.075)*W;
+ if(o.type==="snack"){
+  ctx.fillStyle="#d58b26";
+  ctx.beginPath();
+  ctx.ellipse(x,y-size*.4,size*.40,size*.22,0,0,Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle="#ffe08a";
+  ctx.beginPath();
+  ctx.ellipse(x,y-size*.48,size*.27,size*.12,0,0,Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle="#7a4615";
+  ctx.font=`bold ${Math.max(9,size*.28)}px Arial`;
+  ctx.textAlign="center";
+  ctx.fillText("🥨",x,y-size*.3);
+ }else if(o.type==="car"){
+  ctx.fillStyle="#222";
+  ctx.fillRect(x-size*.5,y-size*.75,size,size*.75);
+  ctx.fillStyle=["#e33","#287bd5","#f3c52b"][Math.floor(o.z*100)%3];
+  ctx.fillRect(x-size*.43,y-size*.7,size*.86,size*.62);
+  ctx.fillStyle="#bde8f5";
+  ctx.fillRect(x-size*.3,y-size*.65,size*.6,size*.20);
+  ctx.fillStyle="#222";
+  ctx.fillRect(x-size*.4,y-size*.12,size*.20,size*.16);
+  ctx.fillRect(x+size*.2,y-size*.12,size*.20,size*.16);
+ }else{
+  ctx.fillStyle="#b77b3c";
+  ctx.fillRect(x-size*.48,y-size*.65,size*.96,size*.65);
+  ctx.strokeStyle="#70401f";
+  ctx.lineWidth=3;
+  ctx.strokeRect(x-size*.48,y-size*.65,size*.96,size*.65);
+ }
+}
+
+function drawPlayer(){
+ let x=W*(.5+lane*.11);
+ let y=H*.83-playerY*H*.45;
+ let s=Math.min(W,H)*.13;
+ // Shadow
+ ctx.fillStyle="#0005";
+ ctx.beginPath();
+ ctx.ellipse(x,H*.85,s*.4,s*.12,0,0,Math.PI*2);
+ ctx.fill();
+ // Legs
+ ctx.strokeStyle="#283a50";
+ ctx.lineWidth=s*.17;
+ ctx.lineCap="round";
+ ctx.beginPath();
+ ctx.moveTo(x-s*.13,y+s*.12);
+ ctx.lineTo(x-s*.22,y+s*.45);
+ ctx.moveTo(x+s*.13,y+s*.12);
+ ctx.lineTo(x+s*.22,y+s*.45);
+ ctx.stroke();
+ // Body
+ ctx.fillStyle="#2479c6";
+ ctx.fillRect(x-s*.28,y-s*.28,s*.56,s*.48);
+ // Head
+ ctx.fillStyle="#d99b70";
+ ctx.beginPath();
+ ctx.arc(x,y-s*.43,s*.20,0,Math.PI*2);
+ ctx.fill();
+ // Hair
+ ctx.fillStyle="#30221b";
+ ctx.beginPath();
+ ctx.arc(x,y-s*.49,s*.20,Math.PI,Math.PI*2);
+ ctx.fill();
+ // Hoodie details
+ ctx.fillStyle="#fff";
+ ctx.fillRect(x-s*.04,y-s*.20,s*.08,s*.17);
+}
+
+function drawCat(){
+ let x=W*.5;
+ let y=H*.91;
+ let s=Math.min(W,H)*.07;
+ ctx.fillStyle="#d98b35";
+ ctx.beginPath();
+ ctx.ellipse(x,y,s*.55,s*.34,0,0,Math.PI*2);
+ ctx.fill();
+ ctx.beginPath();
+ ctx.arc(x,y-s*.28,s*.3,0,Math.PI*2);
+ ctx.fill();
+ ctx.beginPath();
+ ctx.moveTo(x-s*.25,y-s*.42);
+ ctx.lineTo(x-s*.32,y-s*.75);
+ ctx.lineTo(x-s*.05,y-s*.54);
+ ctx.moveTo(x+s*.25,y-s*.42);
+ ctx.lineTo(x+s*.32,y-s*.75);
+ ctx.lineTo(x+s*.05,y-s*.54);
+ ctx.fill();
+ ctx.fillStyle="#222";
+ ctx.beginPath();
+ ctx.arc(x-s*.1,y-s*.3,s*.035,0,Math.PI*2);
+ ctx.arc(x+s*.1,y-s*.3,s*.035,0,Math.PI*2);
+ ctx.fill();
+ ctx.fillStyle="#fff";
+ ctx.font=`bold ${s*.35}px Arial`;
+ ctx.textAlign="center";
+ ctx.fillText("🐈",x,y-s*.8);
+}
+
+function update(dt){
+ distance+=dt*speed*22;
+ speed=Math.min(.85,speed+dt*.002);
+ spawnTimer-=dt;
+ if(spawnTimer<=0){
+  spawn();
+  spawnTimer=.65+Math.random()*.45;
+ }
+ if(playerY>0||velocity>0){
+  playerY+=velocity;
+  velocity-=dt*.65;
+  if(playerY<0){playerY=0;velocity=0;}
+ }
+ sliding=Math.max(0,sliding-dt);
+ for(let o of objects){
+  o.z+=dt*speed*.65;
+  if(o.z>.87&&o.z<.98&&o.lane===lane){
+   if(o.type==="snack"){
+    money++;
+    o.z=2;
+   }else if(o.type==="car"||o.type==="barrier"){
+    if(playerY<.28&&sliding<=0){
+     playing=false;
+     document.getElementById("menu").style.display="flex";
+     document.querySelector("#menu h1").textContent="OYUN BİTDİ!";
+     document.querySelector("#menu p").textContent="Topladığın suxarik: "+money;
+     document.querySelector("#menu button").textContent="YENİDƏN OYNA";
+     if(distance>best){best=Math.floor(distance);localStorage.setItem("srBest",best);}
+    }
+    o.z=2;
+   }
+  }
+ }
+ objects=objects.filter(o=>o.z<1.3);
+ catDistance+=dt;
+ document.getElementById("money").textContent=money;
+ document.getElementById("distance").textContent=Math.floor(distance);
+}
+
+function render(){
+ ctx.clearRect(0,0,W,H);
+ ctx.fillStyle="#8bc9ed";
+ ctx.fillRect(0,0,W,H);
+ road();
+ objects.slice().sort((a,b)=>a.z-b.z).forEach(drawObject);
+ drawCat();
+ drawPlayer();
+}
+
+let lastTime=0;
+function loop(now){
+ if(!playing)return;
+ let dt=Math.min((now-lastTime)/1000,.04);
+ lastTime=now;
+ update(dt);
+ render();
+ if(playing)requestAnimationFrame(loop);
+}
+
+function openShop(){
+ if(playing)playing=false;
+ document.getElementById("shop").style.display="block";
+ document.getElementById("shopMoney").textContent=money;
+ let box=document.getElementById("items");
+ box.innerHTML="";
+ inventory.forEach(item=>{
+  let has=owned.includes(item.name);
+  let div=document.createElement("div");
+  div.className="item";
+  div.innerHTML=`<h3>${item.emoji} ${item.name}</h3><p>${item.price} suxarik</p>`;
+  let b=document.createElement("button");
+  b.textContent=has?(equipped===item.name?"İSTİFADƏ OLUNUR":"GİYİN / SEÇ"):"AL";
+  b.onclick=()=>{
+   if(has){equipped=item.name;}
+   else if(money>=item.price){
+    money-=item.price;
+    owned.push(item.name);
+   }else{alert("Suxarikin kifayət etmir!");}
+   openShop();
+  };
+  div.appendChild(b);
+  box.appendChild(div);
+ });
+}
+function closeShop(){
+ document.getElementById("shop").style.display="none";
+ document.getElementById("menu").style.display="none";
+ playing=true;
+ lastTime=performance.now();
+ requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
+
