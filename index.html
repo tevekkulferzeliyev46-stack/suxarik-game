@@ -1,397 +1,285 @@
-
 <!DOCTYPE html>
 <html lang="az">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SUXARİK RUN</title>
+<title>SUXARİK RUN 3D</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#101820;color:white;font-family:Arial;overflow:hidden}
-canvas{display:block;width:100vw;height:100dvh}
-#hud{position:fixed;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;pointer-events:none}
-.panel{background:#111c;color:white;padding:10px 15px;border-radius:14px;border:1px solid #ffffff44;font-weight:bold}
-#buttons{position:fixed;bottom:20px;left:0;right:0;display:flex;justify-content:space-around;align-items:end}
-button{border:0;border-radius:14px;padding:14px 19px;background:#ffb52e;color:#222;font-weight:bold;font-size:16px;cursor:pointer;touch-action:none}
-#menu{position:fixed;inset:0;background:#07121ddd;display:flex;align-items:center;justify-content:center;text-align:center}
-.card{background:#172637;padding:28px;border-radius:22px;width:min(90%,390px);border:1px solid #ffffff33}
-.card h1{color:#ffc044;font-size:38px;margin:5px}
-.card p{line-height:1.5;color:#ddd}
-#shop{display:none;position:fixed;inset:0;background:#07121dee;overflow:auto;padding:25px;text-align:center}
-.item{background:#24384c;padding:14px;margin:10px;border-radius:13px}
-#shop button{margin:5px}
-.small{font-size:12px;color:#ddd}
+body{margin:0;overflow:hidden;background:#87ceeb;font-family:Arial,sans-serif}
+canvas{display:block}
+#hud{position:fixed;top:12px;left:12px;color:white;font-weight:bold;
+text-shadow:2px 2px 4px #000;font-size:20px;z-index:2}
+#shop{position:fixed;top:12px;right:12px;z-index:3}
+button{border:0;border-radius:12px;padding:12px 17px;
+background:#ffb000;color:#222;font-weight:bold;cursor:pointer}
+#shopPanel{display:none;position:fixed;top:65px;right:12px;
+background:#202b38;color:white;padding:16px;border-radius:14px;
+z-index:4;width:220px}
+#shopPanel button{margin:5px 0;width:100%}
+#message{position:fixed;top:42%;width:100%;text-align:center;
+color:white;font-size:30px;font-weight:bold;text-shadow:2px 2px 5px black;
+pointer-events:none;z-index:5}
+#controls{position:fixed;bottom:20px;left:0;right:0;
+display:flex;justify-content:space-between;padding:0 22px;z-index:3}
+.pad{display:flex;gap:10px}
+#controls button{font-size:22px;min-width:58px;opacity:.85}
 </style>
 </head>
 <body>
-
-<canvas id="game"></canvas>
-
-<div id="hud">
- <div class="panel">🥨 SUXARİK: <span id="money">0</span></div>
- <div class="panel">🏃 MƏSAFƏ: <span id="distance">0</span> m</div>
- <button onclick="openShop()" style="pointer-events:auto">🛒 SHOP</button>
+<div id="hud">🥨 SUXARİK: <span id="money">0</span><br>🏆 Məsafə: <span id="distance">0</span> m</div>
+<div id="shop"><button onclick="toggleShop()">🛍️ MAĞAZA</button></div>
+<div id="shopPanel">
+<h3>OYUNÇU MAĞAZASI</h3>
+<p>Balans: <span id="balance">0</span> suxarik</p>
+<button onclick="buy('hoodie',20)">Hudi — 20</button>
+<button onclick="buy('shoes',30)">Ayaqqabı — 30</button>
+<button onclick="buy('skate',100)">Skeytbord — 100</button>
+<button onclick="buy('scooter',150)">Skuter — 150</button>
+<button onclick="toggleShop()">Bağla</button>
 </div>
-
-<div id="buttons">
- <button onclick="move(-1)">⬅</button>
- <button onclick="jump()">⬆ TULLAN</button>
- <button onclick="slide()">⬇ SÜRÜŞ</button>
- <button onclick="move(1)">➡</button>
-</div>
-
-<div id="menu">
- <div class="card">
-  <h1>🥨 SUXARİK RUN</h1>
-  <p>Məhəllədə qaç! Suxarikləri topla! Pişikdən qaç!</p>
-  <p>⬅ ➡ Hərəkət | SPACE Tullan | S Sürüş</p>
-  <button onclick="startGame()">OYUNA BAŞLA</button>
-  <p class="small">Məhəllənin ən sürətli qaçışçısı ol!</p>
+<div id="message">W / SPACE — TULLAN · S — SÜRÜŞ</div>
+<div id="controls">
+ <div class="pad">
+  <button onclick="move(-1)">⬅️</button>
+  <button onclick="move(1)">➡️</button>
+ </div>
+ <div class="pad">
+  <button onclick="jump()">⬆️</button>
+  <button onclick="slide()">⬇️</button>
  </div>
 </div>
 
-<div id="shop">
- <h1>🛒 SUXARİK SHOP</h1>
- <h3>Balans: <span id="shopMoney">0</span> 🥨</h3>
- <div id="items"></div>
- <button onclick="closeShop()">GERİ QAYIT</button>
-</div>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
 
-<script>
-const canvas=document.getElementById("game");
-const ctx=canvas.getContext("2d");
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, 35, 150);
 
-let W,H;
-function resize(){
- W=canvas.width=innerWidth*devicePixelRatio;
- H=canvas.height=innerHeight*devicePixelRatio;
-}
-resize();
-addEventListener("resize",resize);
+const camera = new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.1,300);
+camera.position.set(0,5,10);
+camera.lookAt(0,1,0);
 
-let money=0,distance=0,playing=false;
-let lane=0,playerY=0,velocity=0,sliding=0;
-let objects=[],spawnTimer=0,speed=0.45;
-let catDistance=0;
-let owned=["Adi geyim"];
-let equipped="Adi geyim";
-let inventory=[
- {name:"Qara hoodie",price:100,emoji:"🧥"},
- {name:"İdman şalvarı",price:150,emoji:"👖"},
- {name:"İdman ayaqqabısı",price:200,emoji:"👟"},
- {name:"Skateboard",price:500,emoji:"🛹"},
- {name:"Adi scooter",price:800,emoji:"🛴"},
- {name:"Elektrikli scooter",price:1500,emoji:"🛵"}
-];
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
 
-let best=Number(localStorage.getItem("srBest")||0);
+scene.add(new THREE.HemisphereLight(0xffffff,0x667788,2));
+const sun = new THREE.DirectionalLight(0xffffff,2.5);
+sun.position.set(-8,15,8);
+sun.castShadow = true;
+scene.add(sun);
 
-function startGame(){
- document.getElementById("menu").style.display="none";
- playing=true;
- objects=[];
- distance=0;
- catDistance=0;
- lane=0;
- speed=0.45;
- lastTime=performance.now();
- requestAnimationFrame(loop);
+const mat=(color,roughness=.8)=>new THREE.MeshStandardMaterial({color,roughness});
+const roadMat=mat(0x30343a), grassMat=mat(0x438b43);
+const whiteMat=mat(0xffffff), darkMat=mat(0x20252b);
+
+function block(w,h,d,color,x,y,z){
+ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(color));
+ m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;
+ scene.add(m);return m;
 }
 
-function move(n){
- if(!playing)return;
- lane=Math.max(-1,Math.min(1,lane+n));
-}
-function jump(){
- if(playing&&playerY===0&&sliding<=0)velocity=0.19;
-}
-function slide(){
- if(playing)sliding=0.65;
+// Yer və yol
+const ground=block(200,.3,220,0x438b43,0,-.3,-65);
+const road=block(12,.12,220,0x30343a,0,-.08,-65);
+for(let z=15;z>-175;z-=9){
+ block(.13,.025,4,0xffffff,0,.01,z);
 }
 
-addEventListener("keydown",e=>{
- if(e.key==="ArrowLeft"||e.key.toLowerCase()==="a")move(-1);
- if(e.key==="ArrowRight"||e.key.toLowerCase()==="d")move(1);
- if(e.key===" "||e.key==="ArrowUp"||e.key.toLowerCase()==="w")jump();
- if(e.key==="ArrowDown"||e.key.toLowerCase()==="s")slide();
+// Səki və küçə kənarları
+block(2,.2,220,0x999999,-7,-.05,-65);
+block(2,.2,220,0x999999,7,-.05,-65);
+
+// Binalar
+function building(x,z){
+ const h=5+Math.random()*9,w=4+Math.random()*3;
+ const colors=[0xd7b28b,0xe5d4b5,0xb8c7d5,0xc9a6a0,0xe2c56f];
+ block(w,h,5,colors[Math.floor(Math.random()*colors.length)],x,h/2-.1,z);
+ for(let y=1.5;y<h-1;y+=2.1){
+  for(let xx=-w/2+1;xx<w/2;xx+=1.5){
+   block(.65,.9,.08,0x76b9d5,x+xx,y,z+2.55);
+  }
+ }
+ block(w+.3,.25,5.3,0x5c5147,x,h+.05,z);
+}
+for(let z=12;z>-175;z-=13){
+ building(-12,z);building(12,z-5);
+}
+
+// Ağaclar
+function tree(x,z){
+ const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.18,.25,2,8),mat(0x79502b));
+ trunk.position.set(x,1,z);scene.add(trunk);
+ const leaves=new THREE.Mesh(new THREE.SphereGeometry(1.15,10,8),mat(0x237b38));
+ leaves.position.set(x,2.6,z);leaves.castShadow=true;scene.add(leaves);
+}
+for(let z=10;z>-175;z-=10){tree(-8.5,z);tree(8.5,z-4)}
+
+// Oyunçu
+const player=new THREE.Group();
+scene.add(player);
+const body=new THREE.Mesh(new THREE.BoxGeometry(.75,1.1,.45),mat(0x1769aa));
+body.position.y=1.35;body.castShadow=true;player.add(body);
+const head=new THREE.Mesh(new THREE.SphereGeometry(.38,16,12),mat(0xe5b58e));
+head.position.y=2.15;head.castShadow=true;player.add(head);
+const hair=new THREE.Mesh(new THREE.SphereGeometry(.39,12,8),mat(0x30231d));
+hair.scale.set(1,.5,1);hair.position.set(0,2.42,0);player.add(hair);
+const legMat=mat(0x252b39);
+for(let x of [-.22,.22]){
+ const leg=new THREE.Mesh(new THREE.BoxGeometry(.25,.75,.3),legMat);
+ leg.position.set(x,.55,0);player.add(leg);
+ const shoe=new THREE.Mesh(new THREE.BoxGeometry(.32,.18,.48),mat(0xeeeeee));
+ shoe.position.set(x,.18,-.07);player.add(shoe);
+}
+player.position.set(0,0,3);
+
+// Pişik — oyunçunun arxasında
+const cat=new THREE.Group();scene.add(cat);
+const catBody=new THREE.Mesh(new THREE.BoxGeometry(.8,.55,1.1),mat(0x24242a));
+catBody.position.y=.65;cat.add(catBody);
+const catHead=new THREE.Mesh(new THREE.SphereGeometry(.42,12,10),mat(0x292930));
+catHead.position.set(0,1,-.45);cat.add(catHead);
+for(let x of [-.25,.25]){
+ const ear=new THREE.Mesh(new THREE.ConeGeometry(.16,.35,4),mat(0x292930));
+ ear.position.set(x,1.38,-.48);cat.add(ear);
+ const eye=new THREE.Mesh(new THREE.SphereGeometry(.055,8,8),mat(0x9aff44));
+ eye.position.set(x*.65,1.05,-.82);cat.add(eye);
+}
+cat.position.set(0,0,9);
+
+// Oyun obyektləri
+const snacks=[],obstacles=[];
+function snack(z){
+ const group=new THREE.Group();
+ const packet=new THREE.Mesh(new THREE.BoxGeometry(.65,.8,.2),mat(0xf4a51c));
+ group.add(packet);
+ const label=new THREE.Mesh(new THREE.BoxGeometry(.45,.35,.02),mat(0xf5edcf));
+ label.position.z=.12;group.add(label);
+ const piece=new THREE.Mesh(new THREE.TorusGeometry(.17,.07,8,12),mat(0xe4a33b));
+ piece.position.set(0,.53,.12);group.add(piece);
+ group.position.set([-3,0,3][Math.floor(Math.random()*3)],.7,z);
+ scene.add(group);snacks.push(group);
+}
+function obstacle(z){
+ const lane=[-3,0,3][Math.floor(Math.random()*3)];
+ const car=Math.random()>.45;
+ const group=new THREE.Group();
+ const color=car?0xc52d28:0xe3a326;
+ const base=new THREE.Mesh(new THREE.BoxGeometry(1.8,car?1.1:.8,2.7),mat(color));
+ base.position.y = car ? 0.75 : 0.4; group.add(base);
+ if(car){
+  const roof=new THREE.Mesh(new THREE.BoxGeometry(1.35,.65,1.3),mat(0x9ac6d9));
+  roof.position.set(0,1.5,-.1);group.add(roof);
+ }
+ group.position.set(lane,0,z);
+ scene.add(group);obstacles.push({mesh:group,car});
+}
+for(let i=0;i<14;i++){snack(-15-i*12);if(i%2===0)obstacle(-25-i*19);}
+
+// İdarəetmə
+let lane=1,score=0,distance=0,speed=17,alive=true;
+let jumping=false,sliding=false,jumpV=0,slideTimer=0;
+let lastTime=0,spawnZ=-190;
+function move(dir){if(alive)lane=Math.max(0,Math.min(2,lane+dir));}
+function jump(){if(alive&&!jumping&&!sliding){jumping=true;jumpV=8;}}
+function slide(){if(alive&&!jumping){sliding=true;slideTimer=.7;}}
+window.addEventListener('keydown',e=>{
+ if(e.key==='ArrowLeft'||e.key.toLowerCase()==='a')move(-1);
+ if(e.key==='ArrowRight'||e.key.toLowerCase()==='d')move(1);
+ if(e.key==='ArrowUp'||e.key===' '||e.key.toLowerCase()==='w')jump();
+ if(e.key==='ArrowDown'||e.key.toLowerCase()==='s')slide();
+});
+window.addEventListener('resize',()=>{
+ camera.aspect=innerWidth/innerHeight;
+ camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);
 });
 
-let touchX=0,touchY=0;
-canvas.addEventListener("touchstart",e=>{
- touchX=e.touches[0].clientX;
- touchY=e.touches[0].clientY;
-},{passive:true});
-canvas.addEventListener("touchend",e=>{
- let dx=e.changedTouches[0].clientX-touchX;
- let dy=e.changedTouches[0].clientY-touchY;
- if(Math.abs(dx)>35)move(dx>0?1:-1);
- else if(Math.abs(dy)>35){if(dy<0)jump();else slide();}
-},{passive:true});
-
-function spawn(){
- let r=Math.random();
- let type=r<0.60?"snack":r<0.85?"car":"barrier";
- objects.push({
-  lane:Math.floor(Math.random()*3)-1,
-  z:0,
-  type:type
- });
+function toggleShop(){
+ const p=document.getElementById('shopPanel');
+ p.style.display=p.style.display==='block'?'none':'block';
+}
+window.toggleShop=toggleShop;
+window.move=move;window.jump=jump;window.slide=slide;
+function buy(item,cost){
+ if(score<cost){alert('Suxarikin çatmır!');return;}
+ score-=cost;updateHud();
+ alert(item+' alındı! Bu ilkin versiyada alış sistemi sınaq mərhələsindədir.');
+}
+window.buy=buy;
+function updateHud(){
+ document.getElementById('money').textContent=score;
+ document.getElementById('balance').textContent=score;
+ document.getElementById('distance').textContent=Math.floor(distance);
+}
+function gameOver(){
+ alive=false;
+ document.getElementById('message').innerHTML=
+ 'OYUN BİTDİ!<br>Məsafə: '+Math.floor(distance)+' m<br><button onclick="location.reload()">YENİDƏN OYNA</button>';
 }
 
-function polygon(points,color){
- ctx.fillStyle=color;
- ctx.beginPath();
- points.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));
- ctx.closePath();
- ctx.fill();
-}
+function animate(time){
+ requestAnimationFrame(animate);
+ const dt=Math.min((time-lastTime)/1000||0,.04);lastTime=time;
+ if(alive){
+  distance+=speed*dt/3;
+  speed=Math.min(27,17+distance*.015);
+  player.position.x+=( [-3,0,3][lane]-player.position.x)*Math.min(1,dt*12);
+  player.rotation.z=(player.position.x-[-3,0,3][lane])*.04;
 
-function road(){
- let horizon=H*.34;
- polygon([[W*.34,horizon],[W*.66,horizon],[W*1.15,H],[W*-.15,H]],"#45494d");
- polygon([[0,horizon],[W*.34,horizon],[W*-.15,H],[0,H]],"#3c6a43");
- polygon([[W*.66,horizon],[W,horizon],[W,H],[W*1.15,H]],"#3c6a43");
-
- // Road markings
- ctx.strokeStyle="#eee";
- ctx.lineWidth=3*devicePixelRatio;
- for(let i=0;i<14;i++){
-  let z=(i/14+distance*.006)%1;
-  let y=horizon+z*z*(H-horizon);
-  let width=z*W*.007;
-  for(let x of [.445,.555]){
-   ctx.beginPath();
-   ctx.moveTo(W*x-width,y);
-   ctx.lineTo(W*x+width,y+z*22*devicePixelRatio);
-   ctx.stroke();
+  if(jumping){
+   player.position.y+=jumpV*dt;jumpV-=20*dt;
+   if(player.position.y<=0){player.position.y=0;jumping=false;}
   }
- }
- // Sidewalks
- polygon([[W*.30,horizon],[W*.34,horizon],[W*-.15,H],[W*-.22,H]],"#99958b");
- polygon([[W*.66,horizon],[W*.70,horizon],[W*1.22,H],[W*1.15,H]],"#99958b");
-
- // Buildings on both sides
- for(let i=0;i<9;i++){
-  let z=(i/9+distance*.0015)%1;
-  let y=horizon+z*z*(H-horizon);
-  let bh=(.05+z*.30)*H;
-  let bw=(.035+z*.12)*W;
-  let x1=W*(.27-z*.30);
-  let x2=W*(.73+z*.30);
-  building(x1,y-bh,bw,bh,z);
-  building(x2,y-bh,bw,bh,z);
- }
-}
-
-function building(x,y,w,h,z){
- ctx.fillStyle=["#d6a77b","#b8c5ca","#d2c5a7","#b2a4a0"][Math.floor((x/w*10)%4)];
- ctx.fillRect(x,y,w,h);
- ctx.fillStyle="#766c68";
- ctx.fillRect(x,y+h*.85,w,h*.15);
- for(let a=0;a<3;a++){
-  for(let b=0;b<3;b++){
-   ctx.fillStyle="#a9d9e9";
-   ctx.fillRect(x+w*(.13+b*.29),y+h*(.12+a*.22),w*.14,h*.12);
+  if(sliding){
+   slideTimer-=dt;
+   body.scale.y=.45;body.position.y=.85;
+   if(slideTimer<=0){sliding=false;body.scale.y=1;body.position.y=1.35;}
   }
- }
-}
 
-function drawObject(o){
- let z=o.z;
- let y=H*.34+z*z*(H*.66);
- let x=W*(.5+o.lane*.11*z);
- let size=(.012+z*.075)*W;
- if(o.type==="snack"){
-  ctx.fillStyle="#d58b26";
-  ctx.beginPath();
-  ctx.ellipse(x,y-size*.4,size*.40,size*.22,0,0,Math.PI*2);
-  ctx.fill();
-  ctx.fillStyle="#ffe08a";
-  ctx.beginPath();
-  ctx.ellipse(x,y-size*.48,size*.27,size*.12,0,0,Math.PI*2);
-  ctx.fill();
-  ctx.fillStyle="#7a4615";
-  ctx.font=`bold ${Math.max(9,size*.28)}px Arial`;
-  ctx.textAlign="center";
-  ctx.fillText("🥨",x,y-size*.3);
- }else if(o.type==="car"){
-  ctx.fillStyle="#222";
-  ctx.fillRect(x-size*.5,y-size*.75,size,size*.75);
-  ctx.fillStyle=["#e33","#287bd5","#f3c52b"][Math.floor(o.z*100)%3];
-  ctx.fillRect(x-size*.43,y-size*.7,size*.86,size*.62);
-  ctx.fillStyle="#bde8f5";
-  ctx.fillRect(x-size*.3,y-size*.65,size*.6,size*.20);
-  ctx.fillStyle="#222";
-  ctx.fillRect(x-size*.4,y-size*.12,size*.20,size*.16);
-  ctx.fillRect(x+size*.2,y-size*.12,size*.20,size*.16);
- }else{
-  ctx.fillStyle="#b77b3c";
-  ctx.fillRect(x-size*.48,y-size*.65,size*.96,size*.65);
-  ctx.strokeStyle="#70401f";
-  ctx.lineWidth=3;
-  ctx.strokeRect(x-size*.48,y-size*.65,size*.96,size*.65);
- }
-}
+  cat.position.x+=(player.position.x-cat.position.x)*dt*2;
+  cat.position.z=player.position.z+6+Math.sin(time*.009)*.3;
+  cat.rotation.y=Math.sin(time*.004)*.08;
+  player.position.z=3;
 
-function drawPlayer(){
- let x=W*(.5+lane*.11);
- let y=H*.83-playerY*H*.45;
- let s=Math.min(W,H)*.13;
- // Shadow
- ctx.fillStyle="#0005";
- ctx.beginPath();
- ctx.ellipse(x,H*.85,s*.4,s*.12,0,0,Math.PI*2);
- ctx.fill();
- // Legs
- ctx.strokeStyle="#283a50";
- ctx.lineWidth=s*.17;
- ctx.lineCap="round";
- ctx.beginPath();
- ctx.moveTo(x-s*.13,y+s*.12);
- ctx.lineTo(x-s*.22,y+s*.45);
- ctx.moveTo(x+s*.13,y+s*.12);
- ctx.lineTo(x+s*.22,y+s*.45);
- ctx.stroke();
- // Body
- ctx.fillStyle="#2479c6";
- ctx.fillRect(x-s*.28,y-s*.28,s*.56,s*.48);
- // Head
- ctx.fillStyle="#d99b70";
- ctx.beginPath();
- ctx.arc(x,y-s*.43,s*.20,0,Math.PI*2);
- ctx.fill();
- // Hair
- ctx.fillStyle="#30221b";
- ctx.beginPath();
- ctx.arc(x,y-s*.49,s*.20,Math.PI,Math.PI*2);
- ctx.fill();
- // Hoodie details
- ctx.fillStyle="#fff";
- ctx.fillRect(x-s*.04,y-s*.20,s*.08,s*.17);
-}
-
-function drawCat(){
- let x=W*.5;
- let y=H*.91;
- let s=Math.min(W,H)*.07;
- ctx.fillStyle="#d98b35";
- ctx.beginPath();
- ctx.ellipse(x,y,s*.55,s*.34,0,0,Math.PI*2);
- ctx.fill();
- ctx.beginPath();
- ctx.arc(x,y-s*.28,s*.3,0,Math.PI*2);
- ctx.fill();
- ctx.beginPath();
- ctx.moveTo(x-s*.25,y-s*.42);
- ctx.lineTo(x-s*.32,y-s*.75);
- ctx.lineTo(x-s*.05,y-s*.54);
- ctx.moveTo(x+s*.25,y-s*.42);
- ctx.lineTo(x+s*.32,y-s*.75);
- ctx.lineTo(x+s*.05,y-s*.54);
- ctx.fill();
- ctx.fillStyle="#222";
- ctx.beginPath();
- ctx.arc(x-s*.1,y-s*.3,s*.035,0,Math.PI*2);
- ctx.arc(x+s*.1,y-s*.3,s*.035,0,Math.PI*2);
- ctx.fill();
- ctx.fillStyle="#fff";
- ctx.font=`bold ${s*.35}px Arial`;
- ctx.textAlign="center";
- ctx.fillText("🐈",x,y-s*.8);
-}
-
-function update(dt){
- distance+=dt*speed*22;
- speed=Math.min(.85,speed+dt*.002);
- spawnTimer-=dt;
- if(spawnTimer<=0){
-  spawn();
-  spawnTimer=.65+Math.random()*.45;
- }
- if(playerY>0||velocity>0){
-  playerY+=velocity;
-  velocity-=dt*.65;
-  if(playerY<0){playerY=0;velocity=0;}
- }
- sliding=Math.max(0,sliding-dt);
- for(let o of objects){
-  o.z+=dt*speed*.65;
-  if(o.z>.87&&o.z<.98&&o.lane===lane){
-   if(o.type==="snack"){
-    money++;
-    o.z=2;
-   }else if(o.type==="car"||o.type==="barrier"){
-    if(playerY<.28&&sliding<=0){
-     playing=false;
-     document.getElementById("menu").style.display="flex";
-     document.querySelector("#menu h1").textContent="OYUN BİTDİ!";
-     document.querySelector("#menu p").textContent="Topladığın suxarik: "+money;
-     document.querySelector("#menu button").textContent="YENİDƏN OYNA";
-     if(distance>best){best=Math.floor(distance);localStorage.setItem("srBest",best);}
-    }
-    o.z=2;
+  for(const s of snacks){
+   s.position.z+=speed*dt;
+   s.rotation.y+=dt*2;
+   if(s.position.z>2 && s.position.z<5 &&
+      Math.abs(s.position.x-player.position.x)<1.1){
+    score+=1;s.position.z=30;updateHud();
    }
+   if(s.position.z>12)s.position.z=-180-Math.random()*40;
   }
+
+  for(const o of obstacles){
+   o.mesh.position.z+=speed*dt;
+   const dx=Math.abs(o.mesh.position.x-player.position.x);
+   const dz=Math.abs(o.mesh.position.z-player.position.z);
+   if(dx<1.15&&dz<1.4){
+    const safelyJumping=jumping&&player.position.y>.8;
+    const safelySliding=sliding&&!o.car;
+    if(!safelyJumping&&!safelySliding)gameOver();
+   }
+   if(o.mesh.position.z>12)o.mesh.position.z=-190-Math.random()*30;
+  }
+  if(distance>spawnZ*-1){snack(-190-Math.random()*25);spawnZ-=40;}
+  updateHud();
  }
- objects=objects.filter(o=>o.z<1.3);
- catDistance+=dt;
- document.getElementById("money").textContent=money;
- document.getElementById("distance").textContent=Math.floor(distance);
+ camera.position.x+=(player.position.x*.25-camera.position.x)*dt*2;
+ camera.position.y=5.2+(jumping?player.position.y*.12:0);
+ camera.lookAt(player.position.x*.2,1.1,0);
+ renderer.render(scene,camera);
 }
-
-function render(){
- ctx.clearRect(0,0,W,H);
- ctx.fillStyle="#8bc9ed";
- ctx.fillRect(0,0,W,H);
- road();
- objects.slice().sort((a,b)=>a.z-b.z).forEach(drawObject);
- drawCat();
- drawPlayer();
-}
-
-let lastTime=0;
-function loop(now){
- if(!playing)return;
- let dt=Math.min((now-lastTime)/1000,.04);
- lastTime=now;
- update(dt);
- render();
- if(playing)requestAnimationFrame(loop);
-}
-
-function openShop(){
- if(playing)playing=false;
- document.getElementById("shop").style.display="block";
- document.getElementById("shopMoney").textContent=money;
- let box=document.getElementById("items");
- box.innerHTML="";
- inventory.forEach(item=>{
-  let has=owned.includes(item.name);
-  let div=document.createElement("div");
-  div.className="item";
-  div.innerHTML=`<h3>${item.emoji} ${item.name}</h3><p>${item.price} suxarik</p>`;
-  let b=document.createElement("button");
-  b.textContent=has?(equipped===item.name?"İSTİFADƏ OLUNUR":"GİYİN / SEÇ"):"AL";
-  b.onclick=()=>{
-   if(has){equipped=item.name;}
-   else if(money>=item.price){
-    money-=item.price;
-    owned.push(item.name);
-   }else{alert("Suxarikin kifayət etmir!");}
-   openShop();
-  };
-  div.appendChild(b);
-  box.appendChild(div);
- });
-}
-function closeShop(){
- document.getElementById("shop").style.display="none";
- document.getElementById("menu").style.display="none";
- playing=true;
- lastTime=performance.now();
- requestAnimationFrame(loop);
-}
+requestAnimationFrame(animate);
 </script>
 </body>
 </html>
-
